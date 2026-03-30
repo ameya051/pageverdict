@@ -1,7 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(python -c \"from uvicorn.config import LOOP_FACTORIES; print\\(LOOP_FACTORIES\\)\")"
-    ]
-  }
-}
