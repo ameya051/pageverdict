@@ -10,6 +10,12 @@ from app.models.schemas import AuditSection, Issue, PageSpeedResult, ScrapedPage
 logger = logging.getLogger(__name__)
 
 
+def _pagespeed_unavailable_strength(pagespeed: PageSpeedResult) -> str:
+    return pagespeed.warning or (
+        "PageSpeed SEO metrics were unavailable, so this score is based on on-page SEO checks only."
+    )
+
+
 # ---------------------------------------------------------------------------
 # Deterministic SEO checks
 # ---------------------------------------------------------------------------
@@ -160,19 +166,22 @@ def _analyze_seo_data(
         ))
 
     # PageSpeed SEO score
-    ps_seo = pagespeed.scores.get("seo", 0.0)
-    if ps_seo >= 0.9:
-        strengths.append(f"Strong Lighthouse SEO score ({int(ps_seo * 100)}/100)")
-    elif 0 < ps_seo < 0.5:
-        score -= 0.5
-        issues.append(Issue(
-            id="low-lighthouse-seo",
-            title=f"Low Lighthouse SEO Score ({int(ps_seo * 100)}/100)",
-            description="Lighthouse flagged multiple SEO issues beyond what's checked here.",
-            severity="warning",
-            impact="Search visibility is significantly impaired.",
-            recommendation="Run the full Lighthouse SEO audit for a complete fix list.",
-        ))
+    if pagespeed.available:
+        ps_seo = pagespeed.scores.get("seo", 0.0)
+        if ps_seo >= 0.9:
+            strengths.append(f"Strong Lighthouse SEO score ({int(ps_seo * 100)}/100)")
+        elif 0 < ps_seo < 0.5:
+            score -= 0.5
+            issues.append(Issue(
+                id="low-lighthouse-seo",
+                title=f"Low Lighthouse SEO Score ({int(ps_seo * 100)}/100)",
+                description="Lighthouse flagged multiple SEO issues beyond what's checked here.",
+                severity="warning",
+                impact="Search visibility is significantly impaired.",
+                recommendation="Run the full Lighthouse SEO audit for a complete fix list.",
+            ))
+    else:
+        strengths.append(_pagespeed_unavailable_strength(pagespeed))
 
     return max(0.0, min(10.0, score)), issues[:5], strengths[:3]
 
@@ -210,6 +219,10 @@ async def analyze_seo(page: ScrapedPage, pagespeed: PageSpeedResult) -> AuditSec
     soup = BeautifulSoup(page.html, "html.parser")
     score, issues, strengths = _analyze_seo_data(soup, page, pagespeed)
     summary = await _llm_summary(score, issues, page.meta)
+    if not pagespeed.available:
+        summary = (
+            f"{summary} PageSpeed SEO metrics were unavailable, so this verdict leans on on-page signals only."
+        )
 
     return AuditSection(
         category="seo",

@@ -33,7 +33,7 @@ class ScanRequest(BaseModel):
             try:
                 addr = ipaddress.ip_address(hostname)
             except ValueError:
-                pass  # Not a raw IP — domain name; DNS-level SSRF check is in the scraper
+                pass  # Not a raw IP; domain name. DNS-level SSRF check is in the scraper.
             else:
                 if addr.is_private or addr.is_loopback or addr.is_link_local or addr.is_reserved:
                     raise ValueError("Private/reserved IP addresses are not allowed")
@@ -63,8 +63,9 @@ class ScanMetadata(BaseModel):
     page_title: str | None = None
     page_description: str | None = None
     favicon_url: str | None = None
-    technologies: list[str] = []
+    technologies: list[str] = Field(default_factory=list)
     scan_duration_ms: int | None = None
+    warnings: list[str] = Field(default_factory=list)
 
 
 class ScanResult(BaseModel):
@@ -99,6 +100,10 @@ class ScrapedPage(BaseModel):
 
 
 class PageSpeedResult(BaseModel):
-    scores: dict[str, float]  # performance, accessibility, best-practices, seo → 0.0–1.0
-    cwv: dict[str, float]     # lcp_ms, cls, inp_ms, tti_ms, speed_index_ms
-    audits: dict[str, dict]   # raw audit details keyed by audit id
+    available: bool = True
+    degraded_reason: str | None = None
+    retry_after_seconds: int | None = None
+    warning: str | None = None
+    scores: dict[str, float]
+    cwv: dict[str, float]
+    audits: dict[str, dict]

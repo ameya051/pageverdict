@@ -87,6 +87,7 @@ async def run_scan(
         favicon_url=scraped_page.meta.get("favicon"),
         technologies=scraped_page.technologies,
         scan_duration_ms=elapsed_ms,
+        warnings=[pagespeed.warning] if pagespeed.warning else [],
     )
 
     result = ScanResult(

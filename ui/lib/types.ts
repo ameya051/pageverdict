@@ -50,6 +50,7 @@ export interface ScanMetadata {
   favicon_url: string | null;
   technologies: string[];
   scan_duration_ms: number | null;
+  warnings: string[];
 }
 
 export interface ScanResult {

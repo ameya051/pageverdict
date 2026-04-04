@@ -264,6 +264,19 @@ export function ScanSandbox() {
                   </p>
                 </div>
 
+                {result.metadata?.warnings.length ? (
+                  <div className="space-y-2">
+                    {result.metadata.warnings.map((warning) => (
+                      <div
+                        key={warning}
+                        className="rounded-[var(--radius-sm)] border border-[color:var(--border-soft)] bg-[color:var(--warning-bg)] px-4 py-3 text-sm leading-7 text-[var(--warning-text)]"
+                      >
+                        {warning}
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div className="rounded-[var(--radius-sm)] bg-white/55 px-4 py-3">
                     <p className="text-xs uppercase tracking-[0.16em] text-[var(--text-muted)]">
