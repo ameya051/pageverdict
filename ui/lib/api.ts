@@ -112,21 +112,21 @@ async function requestJson<T>(
 
 export function analyzeScanSync(
   body: ScanRequest,
-  init: Pick<RequestInit, "signal"> = {},
+  init: RequestInit = {},
 ): Promise<ScanResult> {
   return requestJson<ScanResult>("/api/analyze/sync", {
     method: "POST",
     body: JSON.stringify(body),
-    signal: init.signal,
+    ...init,
   });
 }
 
 export function fetchScanById(
   scanId: string,
-  init: Pick<RequestInit, "signal"> = {},
+  init: RequestInit = {},
 ): Promise<ScanResult> {
   return requestJson<ScanResult>(`/api/scan/${scanId}`, {
     method: "GET",
-    signal: init.signal,
+    ...init,
   });
 }

@@ -1,8 +1,8 @@
 import type { ButtonHTMLAttributes } from "react";
 import { cn } from "@/lib/utils";
 
-type ButtonVariant = "primary" | "secondary" | "ghost";
-type ButtonSize = "sm" | "md" | "lg";
+export type ButtonVariant = "primary" | "secondary" | "ghost";
+export type ButtonSize = "sm" | "md" | "lg";
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant;
@@ -25,6 +25,23 @@ const sizeClasses: Record<ButtonSize, string> = {
   lg: "px-5 py-3 text-base",
 };
 
+export function buttonStyles({
+  variant = "primary",
+  size = "md",
+  className,
+}: {
+  variant?: ButtonVariant;
+  size?: ButtonSize;
+  className?: string;
+}) {
+  return cn(
+    "inline-flex items-center justify-center gap-2 rounded-[var(--radius-pill)] border font-semibold shadow-[var(--shadow-sm)] transition duration-200 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[rgba(196,92,43,0.18)] disabled:cursor-not-allowed disabled:opacity-55 motion-reduce:transition-none",
+    variantClasses[variant],
+    sizeClasses[size],
+    className,
+  );
+}
+
 export function Button({
   className,
   variant = "primary",
@@ -36,18 +53,13 @@ export function Button({
 }: ButtonProps) {
   return (
     <button
-      className={cn(
-        "inline-flex items-center justify-center gap-2 rounded-[var(--radius-pill)] border font-semibold transition duration-200 disabled:cursor-not-allowed disabled:opacity-55",
-        "shadow-[var(--shadow-sm)]",
-        variantClasses[variant],
-        sizeClasses[size],
-        className,
-      )}
+      className={buttonStyles({ variant, size, className })}
       disabled={disabled || pending}
+      aria-busy={pending}
       {...props}
     >
       {pending ? (
-        <span className="h-2 w-2 rounded-full bg-current opacity-80" aria-hidden />
+        <span className="h-2 w-2 rounded-full bg-current opacity-80 motion-safe:animate-pulse" aria-hidden />
       ) : null}
       {children}
     </button>

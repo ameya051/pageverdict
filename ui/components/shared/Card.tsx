@@ -18,14 +18,14 @@ export function Card({
   return (
     <div
       className={cn(
-        "surface-card rounded-[var(--radius-md)] p-5 sm:p-6",
+        "surface-card rounded-[var(--radius-md)] p-5 motion-safe:animate-[rise-in_420ms_ease-out] sm:p-6",
         className,
       )}
       {...props}
     >
       {title || description || aside ? (
-        <div className="mb-4 flex items-start justify-between gap-4">
-          <div>
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
             {title ? (
               <h3 className="text-lg font-semibold text-[var(--text-primary)]">
                 {title}
