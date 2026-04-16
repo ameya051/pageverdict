@@ -5,6 +5,7 @@ import ipaddress
 import logging
 import re
 import socket
+from functools import partial
 from typing import Any
 from urllib.parse import urlparse
 
@@ -127,6 +128,11 @@ def _apply_meta(meta: dict[str, str | None], key: str, val: str) -> None:
         meta[key] = val
 
 
+def _count_console_errors(msg: Any, error_count: list[int]) -> None:
+    if msg.type == "error":
+        error_count[0] += 1
+
+
 async def _check_ssrf(url: str) -> None:
     """Resolve the hostname and reject private/reserved IPs to prevent SSRF."""
     hostname = urlparse(url).hostname
@@ -161,12 +167,7 @@ async def capture_page(url: str) -> ScrapedPage:
             ),
         )
         page: Page = await context.new_page()
-
-        def _on_console(msg: Any) -> None:
-            if msg.type == "error":
-                error_count[0] += 1
-
-        page.on("console", _on_console)
+        page.on("console", partial(_count_console_errors, error_count=error_count))
 
         # Navigate: networkidle → fallback domcontentloaded
         response = None
@@ -213,15 +214,13 @@ async def upload_screenshot(screenshot_bytes: bytes, scan_id: str) -> str:
         api_secret=settings.cloudinary_api_secret,
     )
 
-    def _do_upload() -> dict:
-        return cloudinary.uploader.upload(
-            screenshot_bytes,
-            public_id=f"scans/{scan_id}",
-            resource_type="image",
-            overwrite=True,
-            format="webp",
-            transformation=[{"quality": "auto", "fetch_format": "auto"}],
-        )
-
-    result: dict = await asyncio.to_thread(_do_upload)
+    result: dict = await asyncio.to_thread(
+        cloudinary.uploader.upload,
+        screenshot_bytes,
+        public_id=f"scans/{scan_id}",
+        resource_type="image",
+        overwrite=True,
+        format="webp",
+        transformation=[{"quality": "auto", "fetch_format": "auto"}],
+    )
     return result["secure_url"]
