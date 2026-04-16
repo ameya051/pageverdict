@@ -1,16 +1,13 @@
 from __future__ import annotations
 
-import json
-import logging
 import re
+from typing import Any
 
 from bs4 import BeautifulSoup
 from google.genai import types
 
-from app.llm import generate_json
-from app.models.schemas import AuditSection, Issue, ScrapedPage
-
-logger = logging.getLogger(__name__)
+from app.agents.base import BaseAgent
+from app.models.schemas import AuditSection, ScrapedPage
 
 _SYSTEM_PROMPT = """You are a brutally honest conversion-rate optimisation (CRO) expert auditing a landing page.
 
@@ -55,52 +52,23 @@ def _extract_text(html: str, max_chars: int = 8000) -> str:
 
 
 async def analyze_copy(page: ScrapedPage) -> AuditSection:
-    page_text = _extract_text(page.html)
+    return await CopyAgent().analyze(page=page)
 
-    contents = [
-        f"Here is the extracted page text:\n\n{page_text}\n\nPlease also analyse the screenshot.",
-        types.Part.from_bytes(data=page.screenshot_bytes, mime_type="image/png"),
-    ]
 
-    for attempt in range(3):
-        try:
-            raw = await generate_json(
-                contents=contents,
-                system_instruction=_SYSTEM_PROMPT,
-                temperature=0.4,
-                max_output_tokens=1200,
-            )
-            data = json.loads(raw or "{}")
+class CopyAgent(BaseAgent):
+    category = "copy"
+    name = "Copy & Messaging"
 
-            score = max(0.0, min(10.0, float(data.get("score", 5.0))))
-            issues: list[Issue] = [
-                Issue(
-                    id=item.get("id", f"copy-issue-{i}"),
-                    title=item.get("title", "Issue"),
-                    description=item.get("description", ""),
-                    severity=item.get("severity", "warning"),
-                    impact=item.get("impact", ""),
-                    recommendation=item.get("recommendation", ""),
-                )
-                for i, item in enumerate(data.get("issues", [])[:5])
-            ]
+    def _build_prompt(self, **kwargs: Any) -> tuple[str, list]:
+        page: ScrapedPage = kwargs["page"]
+        page_text = _extract_text(page.html)
+        contents = [
+            f"Here is the extracted page text:\n\n{page_text}\n\nPlease also analyse the screenshot.",
+            types.Part.from_bytes(data=page.screenshot_bytes, mime_type="image/png"),
+        ]
+        return _SYSTEM_PROMPT, contents
 
-            return AuditSection(
-                category="copy",
-                name="Copy & Messaging",
-                score=score,
-                issues=issues,
-                strengths=data.get("strengths", [])[:3],
-                summary=data.get("summary", ""),
-            )
-        except Exception as exc:
-            logger.warning("Copy agent attempt %d/3 failed: %s", attempt + 1, exc)
-
-    return AuditSection(
-        category="copy",
-        name="Copy & Messaging",
-        score=5.0,
-        issues=[],
-        strengths=[],
-        summary="Copy analysis unavailable.",
-    )
+    def _fallback_result(self) -> AuditSection:
+        section = super()._fallback_result()
+        section.summary = "Copy analysis unavailable."
+        return section
