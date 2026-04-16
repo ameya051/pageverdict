@@ -6,7 +6,7 @@ import logging
 import sys
 from contextlib import asynccontextmanager
 from functools import partial
-from typing import AsyncIterator
+from typing import AsyncIterator, Awaitable, Callable
 
 # Windows + Python 3.13: SelectorEventLoop doesn't support subprocesses (needed by Playwright)
 if sys.platform == "win32":
@@ -84,7 +84,7 @@ async def _run_scan_to_queue(
     queue: asyncio.Queue[dict | None],
     url: str,
     client_ip: str,
-    progress_callback,
+    progress_callback: Callable[[ScanProgress], Awaitable[None]],
 ) -> None:
     try:
         result = await run_scan(url, client_ip, progress_callback)

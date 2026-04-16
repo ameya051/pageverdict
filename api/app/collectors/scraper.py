@@ -5,6 +5,7 @@ import ipaddress
 import logging
 import re
 import socket
+from dataclasses import dataclass
 from functools import partial
 from typing import Any
 from urllib.parse import urlparse
@@ -128,9 +129,14 @@ def _apply_meta(meta: dict[str, str | None], key: str, val: str) -> None:
         meta[key] = val
 
 
-def _count_console_errors(msg: Any, error_count: list[int]) -> None:
+@dataclass
+class _ConsoleErrorCounter:
+    count: int = 0
+
+
+def _count_console_errors(msg: Any, counter: _ConsoleErrorCounter) -> None:
     if msg.type == "error":
-        error_count[0] += 1
+        counter.count += 1
 
 
 async def _check_ssrf(url: str) -> None:
@@ -155,7 +161,7 @@ async def capture_page(url: str) -> ScrapedPage:
     await _check_ssrf(url)
 
     context: BrowserContext | None = None
-    error_count = [0]
+    console_error_counter = _ConsoleErrorCounter()
 
     try:
         context = await _browser.new_context(
@@ -167,7 +173,7 @@ async def capture_page(url: str) -> ScrapedPage:
             ),
         )
         page: Page = await context.new_page()
-        page.on("console", partial(_count_console_errors, error_count=error_count))
+        page.on("console", partial(_count_console_errors, counter=console_error_counter))
 
         # Navigate: networkidle → fallback domcontentloaded
         response = None
@@ -195,7 +201,7 @@ async def capture_page(url: str) -> ScrapedPage:
             html=html,
             headers=headers,
             meta=_extract_meta(html),
-            console_errors=error_count[0],
+            console_errors=console_error_counter.count,
             technologies=_detect_technologies(html, headers),
         )
 
