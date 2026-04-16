@@ -96,6 +96,10 @@ def _retry_delay_seconds(attempt_index: int, retry_after_seconds: int | None) ->
     return min(_BASE_BACKOFF_SECONDS * (2 ** attempt_index), float(_MAX_RETRY_AFTER_SECONDS))
 
 
+def _audit_numeric_value(audits: dict[str, dict], audit_id: str) -> float:
+    return float(audits.get(audit_id, {}).get("numericValue") or 0.0)
+
+
 async def fetch_pagespeed(url: str) -> PageSpeedResult:
     settings = get_settings()
 
@@ -200,18 +204,17 @@ async def fetch_pagespeed(url: str) -> PageSpeedResult:
             "seo": float(categories.get("seo", {}).get("score") or 0.0),
         }
 
-        def _num(audit_id: str) -> float:
-            return float(audits.get(audit_id, {}).get("numericValue") or 0.0)
-
-        inp_ms = _num("interaction-to-next-paint") or _num("total-blocking-time")
+        inp_ms = _audit_numeric_value(audits, "interaction-to-next-paint") or _audit_numeric_value(
+            audits, "total-blocking-time"
+        )
 
         cwv = {
-            "lcp_ms": _num("largest-contentful-paint"),
-            "cls": _num("cumulative-layout-shift"),
+            "lcp_ms": _audit_numeric_value(audits, "largest-contentful-paint"),
+            "cls": _audit_numeric_value(audits, "cumulative-layout-shift"),
             "inp_ms": inp_ms,
-            "tbt_ms": _num("total-blocking-time"),
-            "tti_ms": _num("interactive"),
-            "speed_index_ms": _num("speed-index"),
+            "tbt_ms": _audit_numeric_value(audits, "total-blocking-time"),
+            "tti_ms": _audit_numeric_value(audits, "interactive"),
+            "speed_index_ms": _audit_numeric_value(audits, "speed-index"),
         }
 
         detail: dict[str, dict] = {}

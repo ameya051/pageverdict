@@ -5,6 +5,8 @@ import json
 import logging
 import sys
 from contextlib import asynccontextmanager
+from functools import partial
+from typing import AsyncIterator, Awaitable, Callable
 
 # Windows + Python 3.13: SelectorEventLoop doesn't support subprocesses (needed by Playwright)
 if sys.platform == "win32":
@@ -57,6 +59,59 @@ def _get_client_ip(request: Request) -> str:
     return request.client.host if request.client else "unknown"
 
 
+def _monthly_limit_response() -> JSONResponse:
+    return JSONResponse(
+        status_code=429,
+        content={"detail": "Monthly scan limit reached (3 scans/month)."},
+    )
+
+
+async def _ensure_scan_quota(client_ip: str) -> JSONResponse | None:
+    if await check_usage(client_ip):
+        return None
+    return _monthly_limit_response()
+
+
+async def _enqueue_progress_event(
+    progress: ScanProgress,
+    queue: asyncio.Queue[dict | None],
+) -> None:
+    await queue.put({"event": "progress", "data": progress.model_dump()})
+
+
+async def _run_scan_to_queue(
+    *,
+    queue: asyncio.Queue[dict | None],
+    url: str,
+    client_ip: str,
+    progress_callback: Callable[[ScanProgress], Awaitable[None]],
+) -> None:
+    try:
+        result = await run_scan(url, client_ip, progress_callback)
+        await queue.put({"event": "result", "data": result.model_dump(mode="json")})
+    except Exception as exc:
+        logger.exception("Scan failed for %s", url)
+        await queue.put({"event": "error", "data": {"detail": str(exc)}})
+    finally:
+        await queue.put(None)  # sentinel to close the stream
+
+
+async def _event_stream(
+    *,
+    queue: asyncio.Queue[dict | None],
+    scan_task: asyncio.Task[None],
+) -> AsyncIterator[dict[str, str]]:
+    try:
+        while True:
+            msg = await queue.get()
+            if msg is None:
+                break
+            yield {"event": msg["event"], "data": json.dumps(msg["data"])}
+    finally:
+        if not scan_task.done():
+            scan_task.cancel()
+
+
 @app.get("/health")
 async def health():
     return {"status": "ok"}
@@ -67,40 +122,21 @@ async def analyze_sse(body: ScanRequest, request: Request):
     """SSE streaming endpoint — emits progress events and a final result."""
     client_ip = _get_client_ip(request)
 
-    if not await check_usage(client_ip):
-        return JSONResponse(
-            status_code=429,
-            content={"detail": "Monthly scan limit reached (3 scans/month)."},
-        )
+    quota_response = await _ensure_scan_quota(client_ip)
+    if quota_response:
+        return quota_response
 
     queue: asyncio.Queue[dict | None] = asyncio.Queue()
-
-    async def progress_callback(progress: ScanProgress) -> None:
-        await queue.put({"event": "progress", "data": progress.model_dump()})
-
-    async def run() -> None:
-        try:
-            result = await run_scan(str(body.url), client_ip, progress_callback)
-            await queue.put({"event": "result", "data": result.model_dump(mode="json")})
-        except Exception as exc:
-            logger.exception("Scan failed for %s", body.url)
-            await queue.put({"event": "error", "data": {"detail": str(exc)}})
-        finally:
-            await queue.put(None)  # sentinel to close the stream
-
-    async def event_generator():
-        task = asyncio.create_task(run())
-        try:
-            while True:
-                msg = await queue.get()
-                if msg is None:
-                    break
-                yield {"event": msg["event"], "data": json.dumps(msg["data"])}
-        finally:
-            if not task.done():
-                task.cancel()
-
-    return EventSourceResponse(event_generator())
+    progress_callback = partial(_enqueue_progress_event, queue=queue)
+    task = asyncio.create_task(
+        _run_scan_to_queue(
+            queue=queue,
+            url=str(body.url),
+            client_ip=client_ip,
+            progress_callback=progress_callback,
+        )
+    )
+    return EventSourceResponse(_event_stream(queue=queue, scan_task=task))
 
 
 @app.get("/api/scan/{scan_id}")
@@ -120,11 +156,9 @@ async def analyze_sync(body: ScanRequest, request: Request):
     """Non-SSE variant — returns the full ScanResult as JSON."""
     client_ip = _get_client_ip(request)
 
-    if not await check_usage(client_ip):
-        return JSONResponse(
-            status_code=429,
-            content={"detail": "Monthly scan limit reached (3 scans/month)."},
-        )
+    quota_response = await _ensure_scan_quota(client_ip)
+    if quota_response:
+        return quota_response
 
     result = await run_scan(str(body.url), client_ip)
     return result.model_dump(mode="json")
